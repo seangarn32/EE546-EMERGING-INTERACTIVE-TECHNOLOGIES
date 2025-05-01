@@ -4,6 +4,23 @@ This project demonstrates how to use an **ESP32** and two **CD74HC4067 16-channe
 
 ---
 
+## Table of Contents
+
+- [Hardware Overview](#hardware-overview)
+- [Core Idea](#core-idea)
+- [Define GPIO Pins for Multiplexer Control](#define-gpio-pins-for-multiplexer-control)
+- [Define ADC Input and Sampling Parameters](#define-adc-input-and-sampling-parameters)
+- [Setup Function: Configure Pin Modes](#setup-function-configure-pin-modes)
+- [Function: Select a Channel on a MUX](#function-select-a-channel-on-a-mux)
+- [Function: Read and Average ADC Voltage](#function-read-and-average-adc-voltage)
+- [Loop Function: Scan the 4×4 Matrix](#loop-function-scan-the-44-matrix)
+- [Serial Output: Print Matrix Values](#serial-output-print-matrix-values)
+- [Example Output](#example-output)
+- [Notes](#notes)
+
+---
+
+
 ## Hardware Overview
 
 - **ESP  WROOM 32 Development Board**
@@ -181,20 +198,23 @@ The main `loop()` controls the scanning logic:
 - Read voltage at the intersection and store it in a matrix
 
 ```cpp
-float matrix[4][4];  // Voltage storage
+ float matrix[4][4];  // Create a 4x4 array to store the sensor voltage matrix
 
-for (int row = 1; row <= 4; row++) {
-  selectChannel(CD4067_2_S0, CD4067_2_S1, CD4067_2_S2, CD4067_2_S3, row);
-  delayMicroseconds(500);
+  for (int ch2 = 1; ch2 <= 4; ch2++) {  // Loop through rows 1 to 4 (MUX2)
+    selectChannel(CD4067_2_S0, CD4067_2_S1, CD4067_2_S2, CD4067_2_S3, ch2);  // Select the current row
+    delayMicroseconds(500);  // Allow signal to settle
 
-  for (int col = 1; col <= 4; col++) {
-    selectChannel(CD4067_1_S0, CD4067_1_S1, CD4067_1_S2, CD4067_1_S3, col);
-    delayMicroseconds(500);
+    int ch1_list[] = {1, 2, 3, 4};  // Define column numbers to scan
 
-    float voltage = readAverageADC();
-    matrix[col - 1][row - 1] = voltage;
+    for (int i = 0; i < 4; i++) {  // Loop through columns 1 to 4 (MUX1)
+      int ch1 = ch1_list[i];  // Get the column index
+      selectChannel(CD4067_1_S0, CD4067_1_S1, CD4067_1_S2, CD4067_1_S3, ch1);  // Select the current column
+      delayMicroseconds(500);  // Allow signal to settle
+
+      float voltage = readAverageADC();  // Read average voltage from sensor
+      matrix[i][ch2 - 1] = voltage;  // Store the voltage in matrix at [column][row]
+    }
   }
-}
 ```
 
 >  Matrix is filled in `[column][row]` order to match sensor layout.
