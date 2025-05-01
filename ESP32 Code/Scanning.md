@@ -278,3 +278,5 @@ Each value represents the **voltage** measured at a sensor intersection.
 
 ## Reference
 Adesola, S. (n.d.). How to set up ESP32 WROOM-32. Medium. https://samueladesola.medium.com/how-to-set-up-esp32-wroom-32-b2100060470c
+
+---
