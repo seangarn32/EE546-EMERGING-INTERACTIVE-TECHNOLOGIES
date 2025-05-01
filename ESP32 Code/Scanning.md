@@ -5,7 +5,7 @@ This project demonstrates how to use an **ESP32** and two **CD74HC4067 16-channe
 ---
 
 ## Table of Contents
-
+- [Arduino IDE Setup and Driver Download](#arduino-ide-setup-and-driver-download)
 - [Hardware Overview](#hardware-overview)
 - [Core Idea](#core-idea)
 - [Define GPIO Pins for Multiplexer Control](#define-gpio-pins-for-multiplexer-control)
@@ -20,6 +20,20 @@ This project demonstrates how to use an **ESP32** and two **CD74HC4067 16-channe
 
 ---
 
+## Arduino IDE Setup and Driver Download
+- The ESP32-WROOM-32 is a powerful Wi-Fi and Bluetooth microcontroller module. The Arduino IDE provides a simple and user-friendly programming environment that allows developers to quickly write, upload, and debug code using Arduino-style syntax. By installing the ESP32 board support package in the Arduino IDE, users can easily access hardware features such as GPIO, Wi-Fi, and ADC.
+
+- See: "How to Set Up ESP32-WROOM-32" by Samuel Adesola on Medium: https://samueladesola.medium.com/how-to-set-up-esp32-wroom-32-b2100060470c
+
+- Choose **ESP32 Dev Module** from **Tools** - **Board** and also ensure the **Port** is connected to **COM?**.
+
+
+<img src="https://github.com/user-attachments/assets/66b91360-febd-4be3-821f-a8979537f125" width="900" height="500">
+
+
+- You may need to hold down the **boot** button on the board so the code will be uploaded. When 10%, 20%, 30%, ... appear, you can release the button.
+
+---
 
 ## Hardware Overview
 
@@ -261,3 +275,6 @@ Each value represents the **voltage** measured at a sensor intersection.
 - `readAverageADC()` improves stability by averaging multiple ADC reads.
 - Be sure your wiring matches the GPIO definitions.
 - If your matrix is larger (e.g. 8x8), you can extend the logic with more MUX or higher scanning loops.
+
+## Reference
+Adesola, S. (n.d.). How to set up ESP32 WROOM-32. Medium. https://samueladesola.medium.com/how-to-set-up-esp32-wroom-32-b2100060470c
