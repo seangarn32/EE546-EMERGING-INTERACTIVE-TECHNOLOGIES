@@ -6,10 +6,10 @@ This project demonstrates how to use an **ESP32** and two **CD74HC4067 16-channe
 
 ## Hardware Overview
 
-- **ESP32**
+- **ESP  WROOM 32 Development Board**
 - **CD74HC4067 x2** (MUX1 for columns, MUX2 for rows)
-- **Analog sensor matrix** (e.g., pressure or capacitive sensors)
-- **Wiring**:  
+- **Analog pressure sensor matrix**
+- **Example wiring**: 
   - `MUX1` S0–S3 → GPIO33, 25, 26, 27  
   - `MUX2` S0–S3 → GPIO21, 22, 23, 14  
   - Output signal → `ADC_INPUT = GPIO36`
@@ -23,40 +23,55 @@ The code selects a row (via MUX2), then scans each column (via MUX1), and reads 
 
 ---
 
-## Full Code with Comments
+## **Define GPIO Pins for Multiplexer Control**
+
+Each CD74HC4067 multiplexer has 4 address pins (S0–S3). We use two MUX breakout boards: one for **rows**, one for **columns**.
 
 ```cpp
-// Define control pins for the first CD74HC4067 multiplexer (MUX1)
-#define CD4067_1_S0  33  // Address line S0 of MUX1
-#define CD4067_1_S1  25  // Address line S1 of MUX1
-#define CD4067_1_S2  26  // Address line S2 of MUX1
-#define CD4067_1_S3  27  // Address line S3 of MUX1
+#define CD4067_1_S0  33
+#define CD4067_1_S1  25
+#define CD4067_1_S2  26
+#define CD4067_1_S3  27
 
-// Define control pins for the second CD74HC4067 multiplexer (MUX2)
-#define CD4067_2_S0  21  // Address line S0 of MUX2
-#define CD4067_2_S1  22  // Address line S1 of MUX2
-#define CD4067_2_S2  23  // Address line S2 of MUX2
-#define CD4067_2_S3  14  // Address line S3 of MUX2
+#define CD4067_2_S0  21
+#define CD4067_2_S1  22
+#define CD4067_2_S2  23
+#define CD4067_2_S3  14
+```
 
-// Define the analog input pin (connected to sensor matrix)
-#define ADC_INPUT 36     // GPIO36 (ADC1 channel 0)
+>  `CD4067_1_` is for **columns**, `CD4067_2_` is for **rows**.  
+You can modify these GPIO values depending on your ESP32 pin connections.
 
-// Define how many samples to average per reading
-#define SAMPLES_PER_CHANNEL 3  // Average 3 samples for stability
+---
 
-// Delay between matrix scans
-#define SCAN_DELAY 100  // 100 ms
+## **Define ADC Input and Sampling Parameters**
 
+We read analog voltage values from the matrix using a single ADC channel. We will take the average of three sampled voltages as the effective value for one sensing point.
+
+```cpp
+#define ADC_INPUT 36               // ADC1_CH0 on ESP32
+#define SAMPLES_PER_CHANNEL 3     // Take 3 readings per point
+#define SCAN_DELAY 100            // Delay (ms) between matrix scans
+```
+
+>  `GPIO36` (ADC1 channel 0) is a commonly used analog pin on the ESP32.
+
+---
+
+## **Setup Function: Configure Pin Modes**
+
+This function runs once at boot. It sets up serial communication and declares all MUX address pins as outputs.
+
+```cpp
 void setup() {
-  Serial.begin(250000);  // Start serial monitor
+  Serial.begin(250000);  // High-speed debug output
 
-  // Initialize address pins for MUX1
+  // Initialize all address pins as OUTPUT
   pinMode(CD4067_1_S0, OUTPUT);
   pinMode(CD4067_1_S1, OUTPUT);
   pinMode(CD4067_1_S2, OUTPUT);
   pinMode(CD4067_1_S3, OUTPUT);
 
-  // Initialize address pins for MUX2
   pinMode(CD4067_2_S0, OUTPUT);
   pinMode(CD4067_2_S1, OUTPUT);
   pinMode(CD4067_2_S2, OUTPUT);
@@ -64,59 +79,141 @@ void setup() {
 
   Serial.println("Initialization complete, starting channel scan...");
 }
+```
 
-void loop() {
-  float matrix[4][4];  // 4x4 matrix to store voltages
+>  Always initialize GPIOs before using them to control hardware.
 
-  for (int ch2 = 1; ch2 <= 4; ch2++) {  // Select row via MUX2
-    selectChannel(CD4067_2_S0, CD4067_2_S1, CD4067_2_S2, CD4067_2_S3, ch2);
-    delayMicroseconds(500);  // Stabilization delay
+---
 
-    int ch1_list[] = {1, 2, 3, 4};  // Column indices
+## **Function: Select a Channel on a MUX**
 
-    for (int i = 0; i < 4; i++) {  // Loop through columns via MUX1
-      int ch1 = ch1_list[i];
-      selectChannel(CD4067_1_S0, CD4067_1_S1, CD4067_1_S2, CD4067_1_S3, ch1);
-      delayMicroseconds(500);  // Stabilization delay
+The **CD74HC4067** is a 16-channel analog/digital multiplexer. It allows one signal to be routed from one of **16 different input/output lines (channels 0–15)** to a single common pin (usually connected to ADC or signal output).
 
-      float voltage = readAverageADC();  // Read average voltage
-      matrix[i][ch2 - 1] = voltage;      // Store in matrix
-    }
-  }
+This function `selectChannel(...)` sets the address lines **S0 to S3** of the MUX to select a specific channel using **bitwise operations**.
 
-  Serial.println("Matrix updated:");
-  for (int i = 0; i < 4; i++) {
-    for (int j = 0; j < 4; j++) {
-      Serial.print(matrix[i][j], 4);  // Print 4 decimal places
-      if (j < 3) Serial.print(",");
-    }
-    Serial.println();
-  }
+### Function Definition
 
-  delay(SCAN_DELAY);  // Wait before next scan
-}
-
-// Selects a specific channel on CD74HC4067
+```cpp
 void selectChannel(int s0, int s1, int s2, int s3, int channel) {
-  int ch = channel - 1;  // Convert to 0-based index
-  digitalWrite(s0, ch & 0x01);
-  digitalWrite(s1, (ch >> 1) & 0x01);
-  digitalWrite(s2, (ch >> 2) & 0x01);
-  digitalWrite(s3, (ch >> 3) & 0x01);
+  int ch = channel - 1;  // Convert to 0-based index (if input is 1–16)
+  digitalWrite(s0, ch & 0x01);           // Write least significant bit to S0
+  digitalWrite(s1, (ch >> 1) & 0x01);    // Shift right by 1, write to S1
+  digitalWrite(s2, (ch >> 2) & 0x01);    // Shift right by 2, write to S2
+  digitalWrite(s3, (ch >> 3) & 0x01);    // Shift right by 3, write to S3
 }
+```
 
-// Read ADC multiple times and return the average voltage
+### How It Works
+
+Each CD74HC4067 channel is selected using a **4-bit binary address**:
+- S0 is the least significant bit (LSB)
+- S3 is the most significant bit (MSB)
+
+To select a channel, the binary representation of the channel number is sent to these pins.
+
+If the `channel` input is from **1 to 16**, we first subtract 1 (`ch = channel - 1`) to match the chip's **0-based indexing** (0–15).
+
+---
+
+### Example 1: Select Channel 3 on MUX1
+
+```cpp
+selectChannel(33, 25, 26, 27, 3);
+```
+
+#### Step-by-step:
+- `channel = 3` → `ch = 2` (after subtracting 1)
+- `ch = 2` in binary = `0010`
+  - S3 = 0 → `digitalWrite(27, 0)`
+  - S2 = 0 → `digitalWrite(26, 0)`
+  - S1 = 1 → `digitalWrite(25, 1)`
+  - S0 = 0 → `digitalWrite(33, 0)`
+
+---
+
+### Example 2: Select Channel 14
+
+```cpp
+selectChannel(33, 25, 26, 27, 14);
+```
+
+- `channel = 14` → `ch = 13`
+- `13` in binary = `1101`
+  - S3 = 1 → `digitalWrite(27, 1)`
+  - S2 = 1 → `digitalWrite(26, 1)`
+  - S1 = 0 → `digitalWrite(25, 0)`
+  - S0 = 1 → `digitalWrite(33, 1)`
+
+---
+
+### Why Use Bitwise Operations?
+
+Bitwise operations (`&`, `>>`) efficiently extract individual bits from a binary number:
+- `(ch >> n) & 0x01` gets the *n-th bit* (from LSB to MSB)
+- Avoids conditional `if` statements and makes the code fast and compact
+
+---
+
+## **Function: Read and Average ADC Voltage**
+
+To reduce noise, we read the analog input 3 times and return the average.
+
+```cpp
 float readAverageADC() {
   float sum = 0;
   for (int i = 0; i < SAMPLES_PER_CHANNEL; i++) {
-    sum += analogRead(ADC_INPUT) * (3.3 / 4095.0);  // Convert raw value to voltage
-    delayMicroseconds(10);  // Small delay between samples
+    sum += analogRead(ADC_INPUT) * (3.3 / 4095.0);  // Convert raw ADC to volts
+    delayMicroseconds(10);
   }
   return sum / SAMPLES_PER_CHANNEL;
 }
 ```
 
+>  Converts raw `analogRead()` value (0–4095) to real-world voltage (ADC has 12 bits)
+
 ---
+
+## **Loop Function: Scan the 4×4 Matrix**
+
+The main `loop()` controls the scanning logic:  
+- Iterate over **rows** (via MUX2)
+- For each row, iterate over **columns** (via MUX1)
+- Read voltage at the intersection and store it in a matrix
+
+```cpp
+float matrix[4][4];  // Voltage storage
+
+for (int row = 1; row <= 4; row++) {
+  selectChannel(CD4067_2_S0, CD4067_2_S1, CD4067_2_S2, CD4067_2_S3, row);
+  delayMicroseconds(500);
+
+  for (int col = 1; col <= 4; col++) {
+    selectChannel(CD4067_1_S0, CD4067_1_S1, CD4067_1_S2, CD4067_1_S3, col);
+    delayMicroseconds(500);
+
+    float voltage = readAverageADC();
+    matrix[col - 1][row - 1] = voltage;
+  }
+}
+```
+
+>  Matrix is filled in `[column][row]` order to match sensor layout.
+
+---
+
+## **Serial Output: Print Matrix Values**
+
+After scanning the matrix, we print all voltage values in a readable format.
+
+```cpp
+for (int i = 0; i < 4; i++) {
+  for (int j = 0; j < 4; j++) {
+    Serial.print(matrix[i][j], 4);
+    if (j < 3) Serial.print(",");
+  }
+  Serial.println();
+}
+```
 
 ## Example Output
 
@@ -132,9 +229,10 @@ Each value represents the **voltage** measured at a sensor intersection.
 
 ---
 
+
 ## Notes
 
-- `selectChannel()` uses bit masking to control CD74HC4067's 4-bit address.
+- `selectChannel()` uses bitwise operations, including shifting and masking, to set the 4-bit address lines (S0–S3) of the multiplexer.
 - `readAverageADC()` improves stability by averaging multiple ADC reads.
 - Be sure your wiring matches the GPIO definitions.
 - If your matrix is larger (e.g. 8x8), you can extend the logic with more MUX or higher scanning loops.
