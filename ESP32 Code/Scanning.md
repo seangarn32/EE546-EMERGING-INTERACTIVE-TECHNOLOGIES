@@ -226,12 +226,17 @@ The main `loop()` controls the scanning logic:
 After scanning the matrix, we print all voltage values in a readable format.
 
 ```cpp
-for (int i = 0; i < 4; i++) {
-  for (int j = 0; j < 4; j++) {
-    Serial.print(matrix[i][j], 4);
-    if (j < 3) Serial.print(",");
+  Serial.println("Matrix updated:");  // Output message
+
+  for (int i = 0; i < 4; i++) {  // Loop through rows
+    for (int j = 0; j < 4; j++) {  // Loop through columns
+      Serial.print(matrix[i][j], 4);  // Print voltage with 4 decimal digits
+      if (j < 3) Serial.print(",");  // Print comma except after last element
+    }
+    Serial.println();  // Move to next line after each row
   }
-  Serial.println();
+
+  delay(SCAN_DELAY);  // Wait before scanning matrix again
 }
 ```
 
