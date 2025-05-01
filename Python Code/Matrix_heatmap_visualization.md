@@ -3,7 +3,25 @@
 This Python script is a **visualization tool** for the ESP32 + CD74HC4067 sensor matrix. It listens to serial data from the ESP32, parses 4×4 voltage matrices, and renders them as a live color-coded heatmap using Matplotlib.
 
 ---
-## Required Libraries
+
+## Table of Contents
+
+- [1. Required Libraries](#1-required-libraries)
+- [2. Import Required Libraries](#2-import-required-libraries)
+- [3. Serial Port Setup](#3-serial-port-setup)
+- [4. Heatmap Initialization](#4-heatmap-initialization)
+- [5. Set X and Y Axis Labels](#5-set-x-and-y-axis-labels)
+- [6. Add Text Labels to Each Cell](#6-add-text-labels-to-each-cell)
+- [7. Setup Thread-Safe Queue](#7-setup-thread-safe-queue)
+- [8. Update Function for Heatmap Animation](#8-update-function-for-heatmap-animation)
+- [9. Serial Reading Thread](#9-serial-reading-thread)
+- [10. Start Background Thread](#10-start-background-thread)
+- [11. Start Animation & Show GUI](#11-start-animation--show-gui)
+
+---
+
+
+## 1. Required Libraries
 
 Install required libraries via pip if not already available:
 
@@ -12,9 +30,9 @@ pip install matplotlib pyserial numpy
 ```
 ---
 
-## 1. Import Required Libraries
+## 2. Import Required Libraries
 
-```python
+```
 import matplotlib
 import serial
 import numpy as np
@@ -36,9 +54,9 @@ matplotlib.use('TkAgg')  # Use TkAgg backend for GUI
 
 ---
 
-## 2. Serial Port Setup
+## 3. Serial Port Setup
 
-```python
+```
 SERIAL_PORT = 'COM3'     # Change this based on your ESP32 port
 BAUD_RATE = 250000       # Match the ESP32 code
 ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0.05)
@@ -48,14 +66,15 @@ Connect to the ESP32 using the same port and baud rate defined in your ESP32 cod
 
 ---
 
-## 3. Heatmap Initialization
+## 4. Heatmap Initialization
 
-```python
-cmap = mcolors.LinearSegmentedColormap.from_list("custom", ["red", "yellow", "green"])
-fig, ax = plt.subplots()
-matrix = np.zeros((4, 4))  # Initialize matrix
-heatmap = ax.imshow(matrix, cmap=cmap, vmin=0, vmax=3.3)
-cbar = plt.colorbar(heatmap, label="Voltage (V)")
+```
+cmap = mcolors.LinearSegmentedColormap.from_list("custom", ["red", "yellow", "green"])  # Create a red-yellow-green gradient color map
+fig, ax = plt.subplots()                   # Create the plot figure and axes
+matrix = np.zeros((4, 4))                  # Initialize an empty 4x4 matrix
+heatmap = ax.imshow(matrix, cmap=cmap, vmin=0, vmax=3.3)  # Plot the heatmap with defined colormap and voltage range
+cbar = plt.colorbar(heatmap, label="Voltage (V)")         # Add a colorbar legend to the side
+
 ```
 
 - `cmap`: Custom colormap from red to green
@@ -64,23 +83,23 @@ cbar = plt.colorbar(heatmap, label="Voltage (V)")
 
 ---
 
-## 4. Set X and Y Axis Labels
+## 5. Set X and Y Axis Labels
 
-```python
-ax.set_xticks(np.arange(4))
-ax.set_yticks(np.arange(4))
-ax.set_xticklabels(["CH1", "CH2", "CH3", "CH4"])
-ax.set_yticklabels(["CH1", "CH2", "CH3", "CH4"]) # Match the ESP32 code channels
-plt.title("4x4 Matrix Voltage Visualization")
+```
+ax.set_xticks(np.arange(4))                             # Set X-axis ticks from 0 to 3
+ax.set_yticks(np.arange(4))                             # Set Y-axis ticks from 0 to 3
+ax.set_xticklabels(["CH1", "CH2", "CH3", "CH4"])        # Label columns as CH1–CH4
+ax.set_yticklabels(["CH1", "CH2", "CH3", "CH4"])        # Label rows as CH1–CH4
+plt.title("4x4 Matrix Voltage Visualization")           # Add a title to the plot
 ```
 
 Adds clear labels to indicate sensor channels (row/column positions).
 
 ---
 
-## 5. Add Text Labels to Each Cell
+## 6. Add Text Labels to Each Cell
 
-```python
+```
 cell_texts = [[ax.text(j, i, "", ha="center", va="center", color="black", fontsize=12)
                for j in range(4)] for i in range(4)]
 ```
@@ -89,9 +108,9 @@ Creates a 4×4 array of text objects so we can display the numeric voltage value
 
 ---
 
-## 6. Setup Thread-Safe Queue
+## 7. Setup Thread-Safe Queue
 
-```python
+```
 data_queue = queue.Queue()
 ```
 
@@ -99,19 +118,19 @@ The `queue` is used to safely transfer new matrix data from the serial thread to
 
 ---
 
-## 7. Update Function for Heatmap Animation
+## 8. Update Function for Heatmap Animation
 
-```python
-def update_plot(frame):
-    if not data_queue.empty():
-        new_matrix = data_queue.get()
-        heatmap.set_data(new_matrix)
+```
+def update_plot(frame):                               # This function runs every 50 ms from the animation timer
+    if not data_queue.empty():                        # If new matrix data is available
+        new_matrix = data_queue.get()                 # Retrieve the newest matrix from the queue
+        heatmap.set_data(new_matrix)                  # Update heatmap color data
 
-        for i in range(4):
-            for j in range(4):
-                cell_texts[i][j].set_text(f"{new_matrix[i][j]:.2f}")
+        for i in range(4):                            # Loop over rows
+            for j in range(4):                        # Loop over columns
+                cell_texts[i][j].set_text(f"{new_matrix[i][j]:.2f}")  # Update cell text with 2 decimal places
 
-    plt.draw()
+    plt.draw()                                        # Redraw the figure
 ```
 
 - Called every 50 ms by the animation
@@ -120,23 +139,24 @@ def update_plot(frame):
 
 ---
 
-## 8. Serial Reading Thread
+## 9. Serial Reading Thread
 
-```python
-def read_arduino_data():
-    while True:
+```
+def read_arduino_data():                                           # Define a background function for continuous serial reading
+    while True:                                                    # Infinite loop
         try:
-            line = ser.readline().decode('utf-8', errors='ignore').strip()
-            if "Matrix updated:" in line:
-                new_matrix = np.zeros((4, 4))
-                for i in range(4):
-                    row_data = ser.readline().decode('utf-8', errors='ignore').strip().split(",")
-                    if len(row_data) == 4:
-                        new_matrix[i] = [float(val) for val in row_data]
+            line = ser.readline().decode('utf-8', errors='ignore').strip()  # Read a line from serial, decode it
+            if "Matrix updated:" in line:                          # If the trigger line is received
+                new_matrix = np.zeros((4, 4))                      # Initialize new matrix to fill
 
-                data_queue.put(new_matrix)
-        except Exception as e:
-            print(f"Serial read error: {e}")
+                for i in range(4):                                 # Expect 4 lines of row data
+                    row_data = ser.readline().decode('utf-8', errors='ignore').strip().split(",")  # Read and split by comma
+                    if len(row_data) == 4:                         # Ensure exactly 4 values per row
+                        new_matrix[i] = [float(val) for val in row_data]  # Convert strings to floats and store
+
+                data_queue.put(new_matrix)                         # Push the matrix into the data queue
+        except Exception as e:                                     # If there's an error, print it
+            print(f"Serial read error: {e}")                       # Print error to console
 ```
 
 - Waits for `Matrix updated:` line as a trigger
@@ -145,22 +165,22 @@ def read_arduino_data():
 
 ---
 
-## 9. Start Background Thread
+## 10. Start Background Thread
 
-```python
-data_thread = threading.Thread(target=read_arduino_data, daemon=True)
-data_thread.start()
+```
+data_thread = threading.Thread(target=read_arduino_data, daemon=True)  # Create a daemon thread that runs serial reading
+data_thread.start()                                                    # Start the thread
 ```
 
 Starts the serial reader thread in the background, so the GUI stays responsive.
 
 ---
 
-## 10. Start Animation & Show GUI
+## 11. Start Animation & Show GUI
 
-```python
-ani = animation.FuncAnimation(fig, update_plot, interval=50)
-plt.show()
+```
+ani = animation.FuncAnimation(fig, update_plot, interval=50)  # Start the animation; update every 50ms (20Hz)
+plt.show()                                                     # Show the matplotlib GUI window
 ```
 
 - Starts real-time animation loop
