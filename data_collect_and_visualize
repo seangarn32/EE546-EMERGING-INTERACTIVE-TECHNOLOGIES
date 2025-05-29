@@ -1,0 +1,115 @@
+import serial
+import csv
+import time
+from datetime import datetime
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib import colors, animation
+from PIL import Image, ImageOps
+from scipy.ndimage import zoom, gaussian_filter
+import threading
+
+# === CONFIGURATION ===
+SERIAL_PORT = '/dev/tty.usbserial-0001'
+BAUD_RATE = 250000
+DURATION = 30                  # ← how long to collect (in seconds)
+CSV_FILENAME = "sean_shoe_badPOS.csv"
+SHOE_IMAGE = "/Users/feier/Desktop/EE546/shoe.png"
+DEBUG = True
+
+# === Load shoe mask ===
+H, W = 512, 540
+
+# === Setup plot ===
+fig, ax = plt.subplots(figsize=(5, 10))
+heat_data = np.zeros((H, W))
+cmap = colors.LinearSegmentedColormap.from_list("heat", ["red", "yellow", "green"])
+heatmap = ax.imshow(heat_data, cmap=cmap, vmin=0, vmax=3.3, alpha=0.85)
+plt.colorbar(heatmap, label="Voltage (V)")
+ax.axis("off")
+plt.title("Live Pressure Heatmap")
+
+# === Live update target ===
+matrix_data = np.zeros((5, 3))
+
+def update_plot(_):
+    global matrix_data
+    # Interpolate and blur to match shoe mask
+    local_data = np.copy(matrix_data)
+    upsampled = zoom(local_data, (H/5, W/3), order=1)
+    smoothed = gaussian_filter(upsampled, sigma=6)
+    heatmap.set_data(smoothed)
+    return [heatmap]
+
+# === Serial Parsing ===
+def parse_matrix_block(ser):
+    try:
+        header = ser.readline().decode('utf-8', errors='ignore').strip()
+        if "matrix" in header.lower():
+            matrix = np.zeros((5, 3))
+            for i in range(5):
+                row = ser.readline().decode('utf-8', errors='ignore').strip()
+                if DEBUG: print("ROW:", row)
+                values = list(map(float, row.split(',')))
+                if len(values) == 3:
+                    matrix[i] = values
+                else:
+                    return None
+            return matrix
+    except Exception as e:
+        if DEBUG: print("PARSE ERROR:", e)
+    return None
+
+# === MAIN LOGGER ===
+def run_logger():
+    global matrix_data
+
+    print("🔌 Connecting to serial...")
+    try:
+        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0.1)
+        time.sleep(2)
+        ser.reset_input_buffer()
+    except Exception as e:
+        print(f"❌ Serial failed: {e}")
+        return
+
+    print(f"📈 Logging for {DURATION}s → {CSV_FILENAME}")
+    with open(CSV_FILENAME, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Timestamp"] + [f"r{r}c{c}" for r in range(5) for c in range(3)])
+
+        start_time = time.time()
+        next_frame = start_time
+
+        def serial_loop():
+            global matrix_data
+            nonlocal next_frame
+            while time.time() - start_time < DURATION:
+                now = time.time()
+                if now >= next_frame:
+                    mat = parse_matrix_block(ser)
+                    if mat is not None:
+                        matrix_data[:] = mat
+                        ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                        writer.writerow([ts] + matrix_data.flatten().tolist())
+                        f.flush()
+                        if DEBUG:
+                            print(f"[{ts}] Logged frame")
+                    next_frame += 1 / 20  # 20 Hz
+
+        ani = animation.FuncAnimation(fig, update_plot, interval=50, blit=False)
+        
+  
+        thread = threading.Thread(target=serial_loop)
+        thread.start()
+        plt.show()
+        
+        thread.join()
+        ser.close()
+
+        print("✅ Done — file saved.")
+
+# === START ===
+if __name__ == "__main__":
+    run_logger()
+    plt.show()
